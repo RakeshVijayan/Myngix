@@ -1,0 +1,142 @@
+##################################################
+# DO Community Playbooks: LEMP on Ubuntu 18.04
+##################################################
+---
+- hosts: web
+  become: true
+  gather_facts: no
+  vars_files:
+    - vars/default.yml
+
+  pre_tasks:
+    - raw: apt-get install -y python-simplejson
+
+  tasks:
+
+    - name: Upgrade system
+      apt: upgrade=dist update_cache=yes
+
+    - name: Install Prerequisites
+      apt: name={{ item }} update_cache=yes state=latest force_apt_get=yes
+      loop: [ 'aptitude' ]
+
+    - name: Install LEMP Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'nginx', 'mysql-server', 'python3-pymysql', 'php-fpm', 'php-mysql' ]
+    
+    - name: install letsencrypt
+      apt: name=letsencrypt state=latest
+
+    - name: Removes "default" site
+      file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+      notify: Reload Nginx
+    
+    - name: Install system nginx config
+      template:
+        src: files/nginxn.conf.j2
+        dest: /etc/nginx/nginx.conf  
+
+    #- name: Restart service httpd, in all cases
+     # service:
+      #  name: nginx
+      #  state: restarted 
+
+    - name: create letsencrypt directory
+      file: name=/var/www/letsencrypt state=directory  
+
+# Nginx Configuration
+    - name: Sets Nginx conf file
+      template:
+        src: "files/nginx.conf.j2"
+        dest: "/etc/nginx/sites-available/{{ http_conf }}"
+        #notify:
+          #- restart nginx
+ 
+    - name: Enables new site
+      file:
+        src: "/etc/nginx/sites-available/{{ http_conf }}"
+        dest: "/etc/nginx/sites-enabled/{{ http_conf }}"
+        state: link
+      #notify: Reload Nginx
+    - name: Restart service Nginx, in all cases
+      service:
+        name: nginx
+        state: restarted
+    
+    - name: Create letsencrypt certificate
+      shell: letsencrypt certonly -n --webroot -w /var/www/letsencrypt -m {{ letsencrypt_email }} --agree-tos -d {{ http_host }}
+      args:
+        creates: /etc/letsencrypt/live/{{ http_host }}
+
+    - name: Generate dhparams
+      shell: openssl dhparam -out /etc/nginx/dhparams.pem 2048
+      args:
+        creates: /etc/nginx/dhparams.pem
+
+    - name: Sets Nginx ssl conf file
+      template:
+        src: "files/nginx.le.j2"
+        dest: "/etc/nginx/sites-available/{{ http_conf_ssl }}"    
+    
+    - name: Enables new site
+      file:
+        src: "/etc/nginx/sites-available/{{ http_conf_ssl }}"
+        dest: "/etc/nginx/sites-enabled/{{ http_conf_ssl }}"
+        state: link
+        #notify: Reload Nginx
+    
+    
+    - name: Add letsencrypt cronjob for cert renewal
+      cron:
+        name: letsencrypt_renewal
+        special_time: weekly
+        job: letsencrypt --renew certonly -n --webroot -w /var/www/letsencrypt -m {{ letsencrypt_email }} --agree-tos -d {{ http_host }} && service nginx reload
+  
+
+# MySQL Configuration
+    - name: Sets the root password 
+      mysql_user: 
+        name: root 
+        password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Removes all anonymous user accounts
+      mysql_user:
+        name: ''
+        host_all: yes
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Removes the MySQL test database
+      mysql_db: 
+        name: test 
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+# UFW Configuration
+    - name: "UFW - Allow HTTP on port {{ http_port }}"
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+
+# Sets Up PHP Info Page
+    - name: Sets Up PHP Info Page
+      template:
+        src: "files/info.php.j2"
+        dest: "/var/www/html/info.php"
+
+  handlers:
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
