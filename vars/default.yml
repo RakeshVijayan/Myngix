@@ -1,0 +1,7 @@
+---
+mysql_root_password: "Rakesh123!"
+http_host: "nginxnn.strat-staging.com"
+http_conf: "nginxnn.strat-staging.conf"
+http_conf_ssl: "nginxnn.strat-staging.ssl.conf"
+letsencrypt_email: "rakesh.v@strat-agile.com"
+http_port: "80"
