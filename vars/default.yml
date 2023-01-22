@@ -1,5 +1,5 @@
 ---
-mysql_root_password: "Ruiih789kjkjkk123!"
+mysql_root_password: ""
 http_host: "nginxnn.strat-staging.com"
 http_conf: "nginxnn.strat-staging.conf"
 http_conf_ssl: "nginxnn.strat-staging.ssl.conf"
